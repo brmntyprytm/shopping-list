@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, HttpResponseNotFound
 from django.urls import reverse
 from main.forms import ProductForm
 from main.models import Product
@@ -13,6 +13,7 @@ from django.contrib.auth.decorators import login_required
 import datetime
 from django.http import HttpResponseRedirect
 from django.urls import reverse
+from django.views.decorators.csrf import csrf_exempt
 
 
 @login_required(login_url="/login")
@@ -109,26 +110,46 @@ def logout_user(request):
     return response
 
 
-def edit_product(request, id):
-    # Get product by ID
-    product = Product.objects.get(pk=id)
-
-    # Set product as instance of form
-    form = ProductForm(request.POST or None, instance=product)
-
-    if form.is_valid() and request.method == "POST":
-        # Save the form and return to home page
-        form.save()
-        return HttpResponseRedirect(reverse("main:show_main"))
-
-    context = {"form": form}
-    return render(request, "edit_product.html", context)
+def get_product_json(request):
+    product_item = Product.objects.all()
+    return HttpResponse(serializers.serialize("json", product_item))
 
 
-def delete_product(request, id):
-    # Get data by ID
-    product = Product.objects.get(pk=id)
-    # Delete data
-    product.delete()
-    # Return to the main page
-    return HttpResponseRedirect(reverse("main:show_main"))
+@csrf_exempt
+def add_product_ajax(request):
+    if request.method == "POST":
+        name = request.POST.get("name")
+        price = request.POST.get("price")
+        description = request.POST.get("description")
+        user = request.user
+
+        new_product = Product(
+            name=name, price=price, description=description, user=user
+        )
+        new_product.save()
+
+        return HttpResponse(b"CREATED", status=201)
+
+    return HttpResponseNotFound()
+
+
+@csrf_exempt
+def edit_product_ajax(request, product_id):
+    try:
+        product = Product.objects.get(id=product_id, user=request.user)
+    except Product.DoesNotExist:
+        return HttpResponseNotFound()
+
+    if request.method == "POST":
+        name = request.POST.get("name")
+        price = request.POST.get("price")
+        description = request.POST.get("description")
+
+        product.name = name
+        product.price = price
+        product.description = description
+        product.save()
+
+        return HttpResponse(b"OK", status=200)
+
+    return HttpResponseNotFound()
